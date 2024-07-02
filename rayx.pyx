@@ -407,6 +407,11 @@ cdef extern from "rayx/Intern/rayx-core/src/Tracer/CpuTracer.h" namespace "RAYX"
         CpuTracer() except +
         vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int)
 
+#cdef extern from "rayx/Intern/rayx-core/src/Tracer/VulkanTracer.h" namespace "RAYX":
+#    cdef cppclass VulkanTracer:
+#        VulkanTracer() except +
+#        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int)
+
 cdef designMapToPy(DesignMap dm):
     cdef dvec4 dv
     cdef dmat4x4 dm4
@@ -754,15 +759,36 @@ cdef class BeamlineObj:
     def __init__(self, str path):
         self.c_beamline = importBeamline(path)
 
-    def trace(self):
-        cdef CpuTracer tracer = CpuTracer()
-        cdef vector[vector[Ray]] rays = tracer.trace(
+    def trace(self, gpu = False, sequential = True, max_batch_size = 100000, thread_count = 0, max_events = -1, start_event_id = 0):
+        cdef Sequential seq
+        if sequential:
+            seq = Sequential.Yes
+        else:
+            seq = Sequential.No
+        cdef int maxEvents = self.c_beamline.m_DesignElements.size() + 2
+        if max_events >= 0:
+            maxEvents = max_events
+        cdef vector[vector[Ray]] rays
+        cdef CpuTracer cpu_tracer = CpuTracer()
+        #cdef VulkanTracer gpu_tracer = VulkanTracer()
+        #if gpu:
+            #rays = gpu_tracer.trace(
+            #    self.c_beamline,
+            #    seq,
+            #    max_batch_size, 
+            #    thread_count, 
+            #    maxEvents
+            #)
+        #else:
+        rays = cpu_tracer.trace(
             self.c_beamline,
-            Sequential.No,
-            10000, 
-            1, 
-            self.c_beamline.m_DesignElements.size() + 1
+            seq,
+            max_batch_size, 
+            thread_count, 
+            maxEvents
         )
+        des = self.getDesignElements()
+        dss = self.getDesignSources()
         py_rays = []
         for i in range(rays.size()):
             for j in range(rays[i].size()):
@@ -771,6 +797,9 @@ cdef class BeamlineObj:
                 r_dict = r_obj.to_dict()
                 r_dict["ray_index"] = i
                 r_dict["event_index"] = j
+                r_dict["lastElement"] = des[int(r_dict["lastElement"])]["name"]
+                r_dict["sourceID"] = dss[int(r_dict["sourceID"])]["name"]
+
                 py_rays.append(r_dict)
         return pd.DataFrame(py_rays)
 
