@@ -3,3 +3,7 @@ build
 **/*.so
 Data
 .vscode
+rayx.egg-info
+rayx-0.0.0
+boost_1_86_0*
+dist

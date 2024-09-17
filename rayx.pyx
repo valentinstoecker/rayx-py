@@ -1,5 +1,4 @@
 # cython: c_string_type=unicode, c_string_encoding=utf8
-
 import pandas as pd
 
 from libcpp cimport bool as cpp_bool
@@ -8,6 +7,7 @@ from libcpp.string cimport string
 from libcpp.unordered_map cimport unordered_map
 from libcpp.pair cimport pair
 from libcpp.memory cimport shared_ptr
+from libcpp.complex cimport complex
 from cython.operator cimport dereference
 
 cdef extern from "rayx/Extern/glm/glm/glm.hpp" namespace "glm":
@@ -27,7 +27,13 @@ cdef extern from "rayx/Extern/glm/glm/glm.hpp" namespace "glm":
         dmat4x4() except +
         dvec4& operator[](int)
 
-cdef extern from "rayx/Intern/rayx-core/raycorePCH.h":
+cdef extern from "rayx/Intern/rayx-core/src/Shader/Efficiency.h" namespace "RAYX":    
+    cdef cppclass ElectricField:
+        ElectricField() except +
+        ElectricField(complex[double], complex[double], complex[double]) except +
+        complex[double] x, y, z
+
+cdef extern from "rayx/Intern/rayx-core/src/RAY-Core.h":
     pass
 
 cdef extern from "rayx/Intern/rayx-core/src/Shader/Ray.h" namespace "RAYX":
@@ -41,7 +47,7 @@ cdef extern from "rayx/Intern/rayx-core/src/Shader/Ray.h" namespace "RAYX":
 
         double m_energy
 
-        dvec4 m_stokes
+        ElectricField m_field
 
         double m_pathLength
 
@@ -51,7 +57,7 @@ cdef extern from "rayx/Intern/rayx-core/src/Shader/Ray.h" namespace "RAYX":
 
         double m_sourceID
 
-cdef extern from "rayx/Intern/rayx-core/src/angle.h":
+cdef extern from "rayx/Intern/rayx-core/src/Angle.h" namespace "RAYX":
     cdef cppclass Rad:
         Rad() except +
         Rad(double) except +
@@ -62,7 +68,7 @@ cdef extern from "rayx/Intern/rayx-core/src/Data/xml.h" namespace "RAYX":
         Misalignment() except +
         double m_translationXerror, m_translationYerror, m_translationZerror
         Rad m_rotationXerror, m_rotationYerror, m_rotationZerror
-cdef extern from "rayx/Intern/rayx-core/src/Shader/Element.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Element/Element.h" namespace "RAYX":
     cdef cppclass SlopeError:
         SlopeError() except +
         double m_sag, m_mer, m_thermalDistortionAmp, m_thermalDistortionSigmaX, m_thermalDistortionSigmaZ, m_cylindricalBowingAmp, m_cylindricalBowingRadius
@@ -164,7 +170,7 @@ cdef extern from "rayx/Intern/rayx-core/src/Material/Material.h" namespace "RAYX
         Pa = 91,
         U = 92,
 
-cdef extern from "rayx/Intern/rayx-core/src/Shader/Cutout.h":
+cdef extern from "rayx/Intern/rayx-core/src/Element/Cutout.h" namespace "RAYX":
     cdef cppclass Cutout:
         Cutout() except +
         double m_type
@@ -197,7 +203,7 @@ cdef extern from "<array>" namespace "std" nogil:
         array6d() except +
         double& operator[](int)
 
-cdef extern from "rayx/Intern/rayx-core/src/Shader/Surface.h":
+cdef extern from "rayx/Intern/rayx-core/src/Element/Surface.h" namespace "RAYX":
     cdef cppclass Surface:
         Surface() except +
         double m_type
@@ -227,18 +233,18 @@ cdef extern from "rayx/Intern/rayx-core/src/Shader/Surface.h":
     Surface serializeCubic(CubicSurface)
     CubicSurface deserializeCubic(Surface)
 
-cdef extern from "rayx/Intern/rayx-core/src/Beamline/Objects/BehaviourType.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Element/Behaviour.h" namespace "RAYX":
     cpdef enum class CentralBeamstop(int):
         None,
         Rectangle,
         Elliptical,
 
-cdef extern from "rayx/Intern/rayx-core/src/Beamline/Objects/SurfaceType.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Element/Surface.h" namespace "RAYX":
     cpdef enum class CylinderDirection(int):
         LongRadiusR, 
         ShortRadiusRho,
 
-cdef extern from "rayx/Intern/rayx-core/src/Beamline/OpticalElement.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Beamline/Definitions.h" namespace "RAYX":
     cpdef enum class FigureRotation(int):
         Yes,
         Plane,
@@ -273,7 +279,7 @@ cdef extern from "rayx/Intern/rayx-core/src/Beamline/LightSource.h" namespace "R
     cpdef enum class SpreadType(int):
         HardEdge,
         SoftEdge,
-        SeperateEnergies,
+        SeparateEnergies,
 
     cpdef enum class EnergyDistributionType(int):
         File,
@@ -293,7 +299,7 @@ cdef extern from "rayx/Intern/rayx-core/src/Beamline/LightSource.h" namespace "R
         ST_STANDARD,
         ST_ACCURATE,
 
-cdef extern from "rayx/Intern/rayx-core/src/DesignElement/Value.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Design/Value.h" namespace "RAYX":
     cpdef enum class ValueType(int):
         Undefined,
         Double,
@@ -306,7 +312,7 @@ cdef extern from "rayx/Intern/rayx-core/src/DesignElement/Value.h" namespace "RA
         Rad,
         Material,
         Misalignment,
-        CentralBeamStop,
+        CentralBeamstop,
         Cutout,
         CylinderDirection,
         FigureRotation,
@@ -376,13 +382,13 @@ cdef extern from "rayx/Intern/rayx-core/src/DesignElement/Value.h" namespace "RA
         DesignMap& operator[](string)
 
 
-cdef extern from "rayx/Intern/rayx-core/src/DesignElement/DesignElement.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Design/DesignElement.h" namespace "RAYX":
     cdef cppclass DesignElement:
         DesignElement() except +
 
         DesignMap m_elementParameters
 
-cdef extern from "rayx/Intern/rayx-core/src/DesignElement/DesignSource.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Design/DesignSource.h" namespace "RAYX":
     cdef cppclass DesignSource:
         DesignSource() except +
 
@@ -398,19 +404,30 @@ cdef extern from "rayx/Intern/rayx-core/src/Beamline/Beamline.h" namespace "RAYX
 cdef extern from "rayx/Intern/rayx-core/src/Data/Importer.h" namespace "RAYX":
     cdef Beamline importBeamline(string path) except +
 
-cdef extern from "rayx/Intern/rayx-core/src/Tracer/CpuTracer.h" namespace "RAYX":
+cdef extern from "rayx/Intern/rayx-core/src/Tracer/DeviceConfig.h" namespace "RAYX":
+    cdef cppclass DeviceConfig:
+        DeviceConfig() except +
+        DeviceConfig& enableBestDevice() except +
+
+cdef extern from "rayx/Intern/rayx-core/src/Tracer/DeviceConfig.h" namespace "RAYX::DeviceConfig":
+    cpdef enum class DeviceType(int):
+        Unsupported = 0,
+        Cpu = 1,
+        GpuCuda = 2,
+        GpuHip = 4,
+        Gpu = 6,
+        All = 7,
+
+
+cdef extern from "rayx/Intern/rayx-core/src/Tracer/DeviceTracer.h" namespace "RAYX":
     cpdef enum class Sequential(int):
         No,
         Yes,
-    
-    cdef cppclass CpuTracer:
-        CpuTracer() except +
-        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int)
 
-#cdef extern from "rayx/Intern/rayx-core/src/Tracer/VulkanTracer.h" namespace "RAYX":
-#    cdef cppclass VulkanTracer:
-#        VulkanTracer() except +
-#        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int)
+cdef extern from "rayx/Intern/rayx-core/src/Tracer/Tracer.h" namespace "RAYX":
+    cdef cppclass Tracer:
+        Tracer(const DeviceConfig&) except +
+        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int, int)
 
 cdef designMapToPy(DesignMap dm):
     cdef dvec4 dv
@@ -462,7 +479,7 @@ cdef designMapToPy(DesignMap dm):
             "rotationYerror": mis.m_rotationYerror.rad,
             "rotationZerror": mis.m_rotationZerror.rad
         }
-    elif dm.type() == ValueType.CentralBeamStop:
+    elif dm.type() == ValueType.CentralBeamstop:
         return dm.as_centralBeamStop()
     elif dm.type() == ValueType.Cutout:
         if dm.as_cutout().m_type == 0:
@@ -759,7 +776,7 @@ cdef class BeamlineObj:
     def __init__(self, str path):
         self.c_beamline = importBeamline(path)
 
-    def trace(self, gpu = False, sequential = True, max_batch_size = 100000, thread_count = 0, max_events = -1, start_event_id = 0):
+    def trace(self, sequential = True, max_batch_size = 100000, thread_count = 0, max_events = -1, start_event_id = 0):
         cdef Sequential seq
         if sequential:
             seq = Sequential.Yes
@@ -769,23 +786,16 @@ cdef class BeamlineObj:
         if max_events >= 0:
             maxEvents = max_events
         cdef vector[vector[Ray]] rays
-        cdef CpuTracer cpu_tracer = CpuTracer()
-        #cdef VulkanTracer gpu_tracer = VulkanTracer()
-        #if gpu:
-            #rays = gpu_tracer.trace(
-            #    self.c_beamline,
-            #    seq,
-            #    max_batch_size, 
-            #    thread_count, 
-            #    maxEvents
-            #)
-        #else:
-        rays = cpu_tracer.trace(
+        cdef DeviceConfig config
+        #config = config.enableBestDevice()
+        cdef Tracer* tracer = new Tracer(config)
+        rays = tracer.trace(
             self.c_beamline,
             seq,
             max_batch_size, 
             thread_count, 
-            maxEvents
+            maxEvents,
+            start_event_id
         )
         des = self.getDesignElements()
         dss = self.getDesignSources()
@@ -840,7 +850,7 @@ cdef class RayObj:
             "eventType": self.get_eventType(),
             "direction": self.get_direction(),
             "energy": self.get_energy(),
-            "stokes": self.get_stokes(),
+            "field": self.get_field(),
             "pathlength": self.get_pathlength(),
             "order": self.get_order(),
             "lastElement": self.get_lastElement(),
@@ -871,11 +881,11 @@ cdef class RayObj:
     def set_energy(self, energy):
         self.c_ray.m_energy = energy
     
-    def get_stokes(self):
-        return [self.c_ray.m_stokes.x, self.c_ray.m_stokes.y, self.c_ray.m_stokes.z, self.c_ray.m_stokes.w]
+    def get_field(self):
+        return [self.c_ray.m_field.x, self.c_ray.m_field.y, self.c_ray.m_field.z]
     
-    def set_stokes(self, stokes):
-        self.c_ray.m_stokes = dvec4(stokes[0], stokes[1], stokes[2], stokes[3])
+    #def set_stokes(self, field):
+    #    self.c_ray.m_field = ElectricField(complex[double](field[0].real, field[0].imag), complex[double](field[1].real, field[1].imag), complex[double](field[2].real, field[2].imag))
     
     def get_pathlength(self):
         return self.c_ray.m_pathLength
