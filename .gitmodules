@@ -1,3 +1,6 @@
 [submodule "rayx"]
 	path = rayx
 	url = https://github.com/hz-b/rayx.git
+[submodule "boost"]
+	path = boost
+	url = https://github.com/boostorg/boost.git
