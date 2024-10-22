@@ -1,5 +1,7 @@
 # cython: c_string_type=unicode, c_string_encoding=utf8
 import pandas as pd
+import os
+import recordclass
 
 from libcpp cimport bool as cpp_bool
 from libcpp.vector cimport vector
@@ -245,6 +247,10 @@ cdef extern from "rayx/Intern/rayx-core/src/Element/Surface.h" namespace "RAYX":
         ShortRadiusRho,
 
 cdef extern from "rayx/Intern/rayx-core/src/Beamline/Definitions.h" namespace "RAYX":
+    cpdef enum class GratingMount(int):
+        Deviation,
+        Incidence
+    
     cpdef enum class FigureRotation(int):
         Yes,
         Plane,
@@ -299,6 +305,32 @@ cdef extern from "rayx/Intern/rayx-core/src/Beamline/LightSource.h" namespace "R
         ST_STANDARD,
         ST_ACCURATE,
 
+cdef extern from "rayx/Intern/rayx-core/src/Data/Strings.h" namespace "RAYX":
+    cpdef enum class ElementType(int):
+        ImagePlane,
+        ConeMirror,
+        CylinderMirror,
+        EllipsoidMirror,
+        ExpertsMirror,
+        ParaboloidMirror,
+        PlaneGrating,
+        PlaneMirror,
+        ReflectionZoneplate,
+        Slit,
+        SphereGrating,
+        Sphere,
+        SphereMirror,
+        ToroidMirror,
+        ToroidGrating,
+        PointSource,
+        MatrixSource,
+        DipoleSource,
+        DipoleSrc,
+        PixelSource,
+        CircleSource,
+        SimpleUndulatorSource
+
+
 cdef extern from "rayx/Intern/rayx-core/src/Design/Value.h" namespace "RAYX":
     cpdef enum class ValueType(int):
         Undefined,
@@ -325,6 +357,8 @@ cdef extern from "rayx/Intern/rayx-core/src/Design/Value.h" namespace "RAYX":
         ElectronEnergyOrientation,
         SigmaType,
         BehaviourType,
+        ElementType,
+        GratingMount
     
     cdef cppclass DesignMap:
         DesignMap() except +
@@ -352,6 +386,8 @@ cdef extern from "rayx/Intern/rayx-core/src/Design/Value.h" namespace "RAYX":
         void operator=(ElectronEnergyOrientation)
         void operator=(SigmaType)
         void operator=(BehaviourType)
+        void operator=(ElementType)
+        void operator=(GratingMount)
 
         ValueType type()
 
@@ -378,6 +414,8 @@ cdef extern from "rayx/Intern/rayx-core/src/Design/Value.h" namespace "RAYX":
         ElectronEnergyOrientation as_electronEnergyOrientation()
         SigmaType as_sigmaType()
         BehaviourType as_behaviourType()
+        ElementType as_elementType()
+        GratingMount as_gratingMount()
 
         DesignMap& operator[](string)
 
@@ -427,7 +465,59 @@ cdef extern from "rayx/Intern/rayx-core/src/Tracer/DeviceTracer.h" namespace "RA
 cdef extern from "rayx/Intern/rayx-core/src/Tracer/Tracer.h" namespace "RAYX":
     cdef cppclass Tracer:
         Tracer(const DeviceConfig&) except +
-        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int, int)
+        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int, int, string&)
+
+RadNT = recordclass.recordclass('Rad', ['rad'])
+MisalignmentNT = recordclass.recordclass(
+        'Misalignment', [
+            'translationXerror',
+            'translationYerror',
+            'translationZerror',
+            'rotationXerror',
+            'rotationYerror',
+            'rotationZerror'
+    ])
+RectCutoutNT = recordclass.recordclass('RectCutout', ['width', 'length'])
+EllipticalCutoutNT = recordclass.recordclass('EllipticalCutout', ['diameter_x', 'diameter_z'])
+TrapezoidCutoutNT = recordclass.recordclass('TrapezoidCutout', ['widthA', 'widthB', 'length'])
+UnlimitedCutoutNT = recordclass.recordclass('UnlimitedCutout', [])
+QuadricSurfaceNT = recordclass.recordclass(
+    'QuadricSurface', [
+        'icurv',
+        'a11',
+        'a12',
+        'a13',
+        'a14',
+        'a22',
+        'a23',
+        'a24',
+        'a33',
+        'a34',
+        'a44'
+    ])
+ToroidSurfaceNT = recordclass.recordclass('ToroidSurface', ['longRadius', 'shortRadius', 'toroidType'])
+PlaneXZSurfaceNT = recordclass.recordclass('PlaneXZSurface', [])
+CubicSurfaceNT = recordclass.recordclass(
+    'CubicSurface', [
+        'icurv',
+        'a11',
+        'a12',
+        'a13',
+        'a14',
+        'a22',
+        'a23',
+        'a24',
+        'a33',
+        'a34',
+        'a44',
+        'b12',
+        'b13',
+        'b21',
+        'b23',
+        'b31',
+        'b32',
+        'psi'
+    ])
 
 cdef designMapToPy(DesignMap dm):
     cdef dvec4 dv
@@ -448,10 +538,14 @@ cdef designMapToPy(DesignMap dm):
     elif dm.type() == ValueType.String:
         return dm.as_string()
     elif dm.type() == ValueType.Map:
-        py_dm: dict = {}
+        keys = []
+        values = []
         for p in dm.as_map():
-            py_dm[p.first] = designMapToPy(dereference(p.second))
-        return py_dm
+            keys.append(p.first)
+            values.append(designMapToPy(dereference(p.second)))
+
+        MapObj = recordclass.recordclass('Map', keys)
+        return MapObj(*values)
     elif dm.type() == ValueType.Dvec4:
         dv = dm.as_dvec4()
         return [dv[0], dv[1], dv[2], dv[3]]
@@ -462,110 +556,86 @@ cdef designMapToPy(DesignMap dm):
                 [dm4[2][0], dm4[2][1], dm4[2][2], dm4[2][3]],
                 [dm4[3][0], dm4[3][1], dm4[3][2], dm4[3][3]]]
     elif dm.type() == ValueType.Rad:
-        return {
-            "_type": "Rad",
-            "value": dm.as_rad().rad
-        }
+        return RadNT(dm.as_rad().rad)
     elif dm.type() == ValueType.Material:
         return dm.as_material()
     elif dm.type() == ValueType.Misalignment:
         mis = dm.as_misalignment()
-        return {
-            "_type": "Misalignment",
-            "translationXerror": mis.m_translationXerror,
-            "translationYerror": mis.m_translationYerror,
-            "translationZerror": mis.m_translationZerror,
-            "rotationXerror": mis.m_rotationXerror.rad,
-            "rotationYerror": mis.m_rotationYerror.rad,
-            "rotationZerror": mis.m_rotationZerror.rad
-        }
+        return MisalignmentNT(
+            mis.m_translationXerror,
+            mis.m_translationYerror,
+            mis.m_translationZerror,
+            RadNT(mis.m_rotationXerror.rad),
+            RadNT(mis.m_rotationYerror.rad),
+            RadNT(mis.m_rotationZerror.rad)
+        )
     elif dm.type() == ValueType.CentralBeamstop:
         return dm.as_centralBeamStop()
     elif dm.type() == ValueType.Cutout:
         if dm.as_cutout().m_type == 0:
             rect = deserializeRect(dm.as_cutout())
-            return {
-                "_type": "RectCutout",
-                "width": rect.m_width,
-                "length": rect.m_length
-            }
+            return RectCutoutNT(rect.m_width, rect.m_length)
         elif dm.as_cutout().m_type == 1:
             ell = deserializeElliptical(dm.as_cutout())
-            return {
-                "_type": "EllipticalCutout",
-                "diameter_x": ell.m_diameter_x,
-                "diameter_z": ell.m_diameter_z
-            }
+            return EllipticalCutoutNT(ell.m_diameter_x, ell.m_diameter_z)
         elif dm.as_cutout().m_type == 2:
             trap = deserializeTrapezoid(dm.as_cutout())
-            return {
-                "_type": "TrapezoidCutout",
-                "widthA": trap.m_widthA,
-                "widthB": trap.m_widthB,
-                "length": trap.m_length
-            }
+            return TrapezoidCutoutNT(trap.m_widthA, trap.m_widthB, trap.m_length)
         elif dm.as_cutout().m_type == 3:
-            return {
-                "_type": "UnlimitedCutout"
-            }
+            return UnlimitedCutoutNT()
     elif dm.type() == ValueType.CylinderDirection:
         return dm.as_cylinderDirection()
     elif dm.type() == ValueType.FigureRotation:
         return dm.as_figureRotation()
     elif dm.type() == ValueType.CurvatureType:
         return dm.as_curvatureType()
+    elif dm.type() == ValueType.ElementType:
+        return dm.as_elementType()
+    elif dm.type() == ValueType.GratingMount:
+        return dm.as_gratingMount()
     elif dm.type() == ValueType.Surface:
         if dm.as_surface().m_type == 0:
             quad = deserializeQuadric(dm.as_surface())
-            return {
-                "_type": "QuadricSurface",
-                "icurv": quad.m_icurv,
-                "a11": quad.m_a11,
-                "a12": quad.m_a12,
-                "a13": quad.m_a13,
-                "a14": quad.m_a14,
-                "a22": quad.m_a22,
-                "a23": quad.m_a23,
-                "a24": quad.m_a24,
-                "a33": quad.m_a33,
-                "a34": quad.m_a34,
-                "a44": quad.m_a44
-            }
+            return QuadricSurfaceNT(
+                quad.m_icurv,
+                quad.m_a11,
+                quad.m_a12,
+                quad.m_a13,
+                quad.m_a14,
+                quad.m_a22,
+                quad.m_a23,
+                quad.m_a24,
+                quad.m_a33,
+                quad.m_a34,
+                quad.m_a44
+            )
         elif dm.as_surface().m_type == 1:
             tor = deserializeToroid(dm.as_surface())
-            return {
-                "_type": "ToroidSurface",
-                "longRadius": tor.m_longRadius,
-                "shortRadius": tor.m_shortRadius,
-                "toroidType": tor.m_toroidType
-            }
+            return ToroidSurfaceNT(tor.m_longRadius, tor.m_shortRadius, tor.m_toroidType)
         elif dm.as_surface().m_type == 2:
-            return {
-                "_type": "PlaneXZSurface"
-            }
+            return PlaneXZSurfaceNT()
         elif dm.as_surface().m_type == 3:
             cub = deserializeCubic(dm.as_surface())
-            return {
-                "_type": "CubicSurface",
-                "icurv": cub.m_icurv,
-                "a11": cub.m_a11,
-                "a12": cub.m_a12,
-                "a13": cub.m_a13,
-                "a14": cub.m_a14,
-                "a22": cub.m_a22,
-                "a23": cub.m_a23,
-                "a24": cub.m_a24,
-                "a33": cub.m_a33,
-                "a34": cub.m_a34,
-                "a44": cub.m_a44,
-                "b12": cub.m_b12,
-                "b13": cub.m_b13,
-                "b21": cub.m_b21,
-                "b23": cub.m_b23,
-                "b31": cub.m_b31,
-                "b32": cub.m_b32,
-                "psi": cub.m_psi
-            }
+            return CubicSurfaceNT(
+                cub.m_icurv,
+                cub.m_a11,
+                cub.m_a12,
+                cub.m_a13,
+                cub.m_a14,
+                cub.m_a22,
+                cub.m_a23,
+                cub.m_a24,
+                cub.m_a33,
+                cub.m_a34,
+                cub.m_a44,
+                cub.m_b12,
+                cub.m_b13,
+                cub.m_b21,
+                cub.m_b23,
+                cub.m_b31,
+                cub.m_b32,
+                cub.m_psi
+            )
     elif dm.type() == ValueType.SourceDist:
         return dm.as_sourceDist()
     elif dm.type() == ValueType.SpreadType:
@@ -617,94 +687,95 @@ cdef DesignMap dictToDesignMap(d):
     cdef ElectronEnergyOrientation eo
     cdef SigmaType sig
     cdef BehaviourType bt
+    cdef ElementType et
+    cdef GratingMount gm
 
-    if isinstance(d, dict):
-        dtype = d.get("_type")
-        if dtype == None:
-            for k, v in d.items():
-                inner_dm = new DesignMap()
-                inner_dm[0] = dictToDesignMap(v)
-                map[k] = shared_ptr[DesignMap](inner_dm)
-            dm = map
-        elif dtype == "Rad":
-            dm = Rad(d.get("value"))
-        elif dtype == "Misalignment":
-            mis = Misalignment()
-            mis.m_translationXerror = d.get("translationXerror")
-            mis.m_translationYerror = d.get("translationYerror")
-            mis.m_translationZerror = d.get("translationZerror")
-            mis.m_rotationXerror = Rad(d.get("rotationXerror"))
-            mis.m_rotationYerror = Rad(d.get("rotationYerror"))
-            mis.m_rotationZerror = Rad(d.get("rotationZerror"))
-            dm = mis
-        elif dtype == "RectCutout":
-            rect = RectCutout()
-            rect.m_width = d.get("width")
-            rect.m_length = d.get("length")
-            cut = serializeRect(rect)
-            dm = cut
-        elif dtype == "EllipticalCutout":
-            ell = EllipticalCutout()
-            ell.m_diameter_x = d.get("diameter_x")
-            ell.m_diameter_z = d.get("diameter_z")
-            cut = serializeElliptical(ell)
-            dm = cut
-        elif dtype == "TrapezoidCutout":
-            trap = TrapezoidCutout()
-            trap.m_widthA = d.get("widthA")
-            trap.m_widthB = d.get("widthB")
-            trap.m_length = d.get("length")
-            cut = serializeTrapezoid(trap)
-            dm = cut
-        elif dtype == "UnlimitedCutout":
-            dm = serializeUnlimited()
-        elif dtype == "QuadricSurface":
-            quad = QuadricSurface()
-            quad.m_icurv = d.get("icurv")
-            quad.m_a11 = d.get("a11")
-            quad.m_a12 = d.get("a12")
-            quad.m_a13 = d.get("a13")
-            quad.m_a14 = d.get("a14")
-            quad.m_a22 = d.get("a22")
-            quad.m_a23 = d.get("a23")
-            quad.m_a24 = d.get("a24")
-            quad.m_a33 = d.get("a33")
-            quad.m_a34 = d.get("a34")
-            quad.m_a44 = d.get("a44")
-            surf = serializeQuadric(quad)
-            dm = surf
-        elif dtype == "ToroidSurface":
-            tor = ToroidSurface()
-            tor.m_longRadius = d.get("longRadius")
-            tor.m_shortRadius = d.get("shortRadius")
-            tor.m_toroidType = d.get("toroidType")
-            surf = serializeToroid(tor)
-            dm = surf
-        elif dtype == "PlaneXZSurface":
-            surf = serializePlaneXZ()
-            dm = surf
-        elif dtype == "CubicSurface":
-            cub = CubicSurface()
-            cub.m_icurv = d.get("icurv")
-            cub.m_a11 = d.get("a11")
-            cub.m_a12 = d.get("a12")
-            cub.m_a13 = d.get("a13")
-            cub.m_a14 = d.get("a14")
-            cub.m_a22 = d.get("a22")
-            cub.m_a23 = d.get("a23")
-            cub.m_a24 = d.get("a24")
-            cub.m_a33 = d.get("a33")
-            cub.m_a34 = d.get("a34")
-            cub.m_a44 = d.get("a44")
-            cub.m_b12 = d.get("b12")
-            cub.m_b13 = d.get("b13")
-            cub.m_b21 = d.get("b21")
-            cub.m_b23 = d.get("b23")
-            cub.m_b31 = d.get("b31")
-            cub.m_b32 = d.get("b32")
-            cub.m_psi = d.get("psi")
-            surf = serializeCubic(cub)
-            dm = surf
+    if d.__class__.__name__ == "Map":
+        for k, v in d._asdict().items():
+            inner_dm = new DesignMap()
+            inner_dm[0] = dictToDesignMap(v)
+            map[k] = shared_ptr[DesignMap](inner_dm)
+        dm = map
+    elif isinstance(d, RadNT):
+        dm = Rad(d.rad)
+    elif isinstance(d, MisalignmentNT):
+        mis = Misalignment()
+        mis.m_translationXerror = d.translationXerror
+        mis.m_translationYerror = d.translationYerror
+        mis.m_translationZerror = d.translationZerror
+        mis.m_rotationXerror = Rad(d.rotationXerror.rad)
+        mis.m_rotationYerror = Rad(d.rotationYerror.rad)
+        mis.m_rotationZerror = Rad(d.rotationZerror.rad)
+        dm = mis
+    elif isinstance(d, RectCutoutNT):
+        rect = RectCutout()
+        rect.m_width = d.width
+        rect.m_length = d.length
+        cut = serializeRect(rect)
+        dm = cut
+    elif isinstance(d, EllipticalCutoutNT):
+        ell = EllipticalCutout()
+        ell.m_diameter_x = d.diameter_x
+        ell.m_diameter_z = d.diameter_z
+        cut = serializeElliptical(ell)
+        dm = cut
+    elif isinstance(d, TrapezoidCutoutNT):
+        trap = TrapezoidCutout()
+        trap.m_widthA = d.widthA
+        trap.m_widthB = d.widthB
+        trap.m_length = d.length
+        cut = serializeTrapezoid(trap)
+        dm = cut
+    elif isinstance(d, UnlimitedCutoutNT):
+        dm = serializeUnlimited()
+    elif isinstance(d, QuadricSurfaceNT):
+        quad = QuadricSurface()
+        quad.m_icurv = d.icurv
+        quad.m_a11 = d.a11
+        quad.m_a12 = d.a12
+        quad.m_a13 = d.a13
+        quad.m_a14 = d.a14
+        quad.m_a22 = d.a22
+        quad.m_a23 = d.a23
+        quad.m_a24 = d.a24
+        quad.m_a33 = d.a33
+        quad.m_a34 = d.a34
+        quad.m_a44 = d.a44
+
+        surf = serializeQuadric(quad)
+        dm = surf
+    elif isinstance(d, ToroidSurfaceNT):
+        tor = ToroidSurface()
+        tor.m_longRadius = d.longRadius
+        tor.m_shortRadius = d.shortRadius
+        tor.m_toroidType = d.toroidType
+        surf = serializeToroid(tor)
+        dm = surf
+    elif isinstance(d, PlaneXZSurfaceNT):
+        surf = serializePlaneXZ()
+        dm = surf
+    elif isinstance(d, CubicSurfaceNT):
+        cub = CubicSurface()
+        cub.m_icurv = d.icurv
+        cub.m_a11 = d.a11
+        cub.m_a12 = d.a12
+        cub.m_a13 = d.a13
+        cub.m_a14 = d.a14
+        cub.m_a22 = d.a22
+        cub.m_a23 = d.a23
+        cub.m_a24 = d.a24
+        cub.m_a33 = d.a33
+        cub.m_a34 = d.a34
+        cub.m_a44 = d.a44
+        cub.m_b12 = d.b12
+        cub.m_b13 = d.b13
+        cub.m_b21 = d.b21
+        cub.m_b23 = d.b23
+        cub.m_b31 = d.b31
+        cub.m_b32 = d.b32
+        cub.m_psi = d.psi
+        surf = serializeCubic(cub)
+        dm = surf
     elif isinstance(d, list):
         if len(d) == 4:
             if isinstance(d[0], list):
@@ -754,6 +825,12 @@ cdef DesignMap dictToDesignMap(d):
     elif isinstance(d, BehaviourType):
         bt = d
         dm = bt
+    elif isinstance(d, ElementType):
+        et = d
+        dm = et
+    elif isinstance(d, GratingMount):
+        gm = d
+        dm = gm
     elif isinstance(d, int):
         i = d
         dm = i 
@@ -770,14 +847,37 @@ cdef DesignMap dictToDesignMap(d):
 
 cdef class BeamlineObj:
     cdef Beamline c_beamline
+    cdef public dict sources
+    cdef public dict elements
+    
     def __cinit__(self):
         self.c_beamline = Beamline()
     
     def __init__(self, str path):
         self.c_beamline = importBeamline(path)
+        self.init_elems()
+
+    def init_elems(self):
+        source_list = self.getDesignSources()
+        self.sources = {}
+        for s in source_list:
+            self.sources[s.name] = s
+        
+        element_list = self.getDesignElements()
+        self.elements = {}
+        for e in element_list:
+            self.elements[e.name] = e
+    
+    def update_elems(self):
+        self.setDesignSources(list(self.sources.values()))
+        self.setDesignElements(list(self.elements.values()))
+
 
     def trace(self, sequential = True, max_batch_size = 100000, thread_count = 0, max_events = -1, start_event_id = 0):
-        cdef Sequential seq
+        cdef Sequential seqtrace
+
+        self.update_elems()
+
         if sequential:
             seq = Sequential.Yes
         else:
@@ -787,15 +887,19 @@ cdef class BeamlineObj:
             maxEvents = max_events
         cdef vector[vector[Ray]] rays
         cdef DeviceConfig config
-        #config = config.enableBestDevice()
+        config.enableBestDevice()
         cdef Tracer* tracer = new Tracer(config)
+        
+        data_path = os.path.join(os.path.dirname(__file__), "rayx-data/Data")
+
         rays = tracer.trace(
             self.c_beamline,
             seq,
             max_batch_size, 
             thread_count, 
             maxEvents,
-            start_event_id
+            start_event_id,
+            data_path
         )
         des = self.getDesignElements()
         dss = self.getDesignSources()
@@ -807,8 +911,8 @@ cdef class BeamlineObj:
                 r_dict = r_obj.to_dict()
                 r_dict["ray_index"] = i
                 r_dict["event_index"] = j
-                r_dict["lastElement"] = des[int(r_dict["lastElement"])]["name"]
-                r_dict["sourceID"] = dss[int(r_dict["sourceID"])]["name"]
+                r_dict["lastElement"] = des[int(r_dict["lastElement"])].name
+                r_dict["sourceID"] = dss[int(r_dict["sourceID"])].name
 
                 py_rays.append(r_dict)
         return pd.DataFrame(py_rays)
