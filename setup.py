@@ -4,14 +4,14 @@ import os
 
 # download boost
 if not os.path.exists("boost_1_86_0"):
-  os.system("wget https://boostorg.jfrog.io/artifactory/main/release/1.86.0/source/boost_1_86_0.tar.gz")
+  os.system("curl -LO https://boostorg.jfrog.io/artifactory/main/release/1.86.0/source/boost_1_86_0.tar.gz")
   os.system("tar -xzf boost_1_86_0.tar.gz")
 
 boost_dir = os.path.abspath("boost_1_86_0")
 
 os.system(f"mkdir -p rayx/build && cd rayx/build && cmake -DRAYX_STATIC_LIB=ON -DBoost_INCLUDE_DIR={boost_dir} .. && make -j")
-
-os.system("cp -r rayx/Data pkgs/rayx-data")
+os.system("mkdir -p pkgs/rayx-data/share/RAYX")
+os.system("cp -r rayx/Data pkgs/rayx-data/share/RAYX")
 
 extensions = [
   Extension("rayx", 

@@ -465,7 +465,14 @@ cdef extern from "rayx/Intern/rayx-core/src/Tracer/DeviceTracer.h" namespace "RA
 cdef extern from "rayx/Intern/rayx-core/src/Tracer/Tracer.h" namespace "RAYX":
     cdef cppclass Tracer:
         Tracer(const DeviceConfig&) except +
-        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int, int, string&)
+        vector[vector[Ray]] trace(Beamline&, Sequential, int, int, int)
+
+cdef extern from "rayx/Intern/rayx-core/src/Data/Locate.h" namespace "RAYX":
+    cdef cppclass ResourceHandler:
+        @staticmethod
+        ResourceHandler& getInstance() except +
+        
+        void addLookUpPath(string&) except +
 
 RadNT = recordclass.recordclass('Rad', ['rad'])
 MisalignmentNT = recordclass.recordclass(
@@ -890,16 +897,17 @@ cdef class BeamlineObj:
         config.enableBestDevice()
         cdef Tracer* tracer = new Tracer(config)
         
-        data_path = os.path.join(os.path.dirname(__file__), "rayx-data/Data")
+        data_path = os.path.join(os.path.dirname(__file__), "rayx-data")
+
+        cdef ResourceHandler* rh = &(ResourceHandler.getInstance())
+        rh.addLookUpPath(data_path)
 
         rays = tracer.trace(
             self.c_beamline,
             seq,
             max_batch_size, 
             thread_count, 
-            maxEvents,
-            start_event_id,
-            data_path
+            maxEvents
         )
         des = self.getDesignElements()
         dss = self.getDesignSources()
