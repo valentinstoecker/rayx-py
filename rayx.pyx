@@ -1,5 +1,6 @@
 # cython: c_string_type=unicode, c_string_encoding=utf8
 import pandas as pd
+import numpy as np
 import os
 import recordclass
 
@@ -856,6 +857,8 @@ cdef class BeamlineObj:
     cdef Beamline c_beamline
     cdef public dict sources
     cdef public dict elements
+    #cdef private list original_sources
+    #cdef private list original_elements
     
     def __cinit__(self):
         self.c_beamline = Beamline()
@@ -874,12 +877,18 @@ cdef class BeamlineObj:
         self.elements = {}
         for e in element_list:
             self.elements[e.name] = e
+        
+        # save a deep copy of the original sources and elements
+        # self.original_sources = copy.deepcopy(self.sources)
+        # self.original_elements = copy.deepcopy(self.elements)
     
     def update_elems(self):
-        self.setDesignSources(list(self.sources.values()))
-        self.setDesignElements(list(self.elements.values()))
+        source_list = self.sources.values()
+        self.setDesignSources(source_list)
 
-
+        element_list = self.elements.values()
+        self.setDesignElements(element_list)
+    
     def trace(self, sequential = True, max_batch_size = 100000, thread_count = 0, max_events = -1, start_event_id = 0):
         cdef Sequential seqtrace
 
@@ -951,6 +960,27 @@ cdef class BeamlineObj:
             ds.m_elementParameters = dictToDesignMap(s)
             self.c_beamline.m_DesignSources.push_back(ds)
 
+    def __str__(self):
+        s = "Beamline("
+        s += "Sources: ["
+        s += ", ".join(self.sources.keys())
+        s += "], Elements: ["
+        s += ", ".join(self.elements.keys())
+        s += "])"
+        return s
+
+    def __repr__(self):
+        return self.__str__()
+
+    # add indexing into the elements and sources
+    def __getitem__(self, key):
+        if key in self.elements:
+            return self.elements[key]
+        elif key in self.sources:
+            return self.sources[key]
+        else:
+            raise KeyError(f"Key not found in elements or sources, available keys are {list(self.elements.keys()) + list(self.sources.keys())}")
+
 cdef class RayObj:
     cdef Ray c_ray
     def __cinit__(self):
@@ -970,7 +1000,7 @@ cdef class RayObj:
         }
 
     def get_position(self):
-        return [self.c_ray.m_position.x, self.c_ray.m_position.y, self.c_ray.m_position.z]
+        return np.array([self.c_ray.m_position.x, self.c_ray.m_position.y, self.c_ray.m_position.z])
     
     def set_position(self, position):
         self.c_ray.m_position = dvec3(position[0], position[1], position[2])
@@ -982,7 +1012,7 @@ cdef class RayObj:
         self.c_ray.m_eventType = eventType
     
     def get_direction(self):
-        return [self.c_ray.m_direction.x, self.c_ray.m_direction.y, self.c_ray.m_direction.z]
+        return np.array([self.c_ray.m_direction.x, self.c_ray.m_direction.y, self.c_ray.m_direction.z])
 
     def set_direction(self, direction):
         self.c_ray.m_direction = dvec3(direction[0], direction[1], direction[2])
@@ -994,7 +1024,7 @@ cdef class RayObj:
         self.c_ray.m_energy = energy
     
     def get_field(self):
-        return [self.c_ray.m_field.x, self.c_ray.m_field.y, self.c_ray.m_field.z]
+        return np.array([self.c_ray.m_field.x, self.c_ray.m_field.y, self.c_ray.m_field.z])
     
     #def set_stokes(self, field):
     #    self.c_ray.m_field = ElectricField(complex[double](field[0].real, field[0].imag), complex[double](field[1].real, field[1].imag), complex[double](field[2].real, field[2].imag))
@@ -1039,3 +1069,5 @@ cdef class RayObj:
     def __repr__(self):
         return self.__str__()
     
+def open_beamline(path):
+    return BeamlineObj(path)

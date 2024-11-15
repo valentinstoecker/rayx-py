@@ -2,6 +2,8 @@ from setuptools import setup, Extension, find_namespace_packages
 from Cython.Build import cythonize
 import os
 
+data_path = 'share/RAYX'
+
 # download boost
 if not os.path.exists("boost_1_86_0"):
   os.system("curl -LO https://boostorg.jfrog.io/artifactory/main/release/1.86.0/source/boost_1_86_0.tar.gz")
@@ -10,8 +12,9 @@ if not os.path.exists("boost_1_86_0"):
 boost_dir = os.path.abspath("boost_1_86_0")
 
 os.system(f"mkdir -p rayx/build && cd rayx/build && cmake -DRAYX_STATIC_LIB=ON -DBoost_INCLUDE_DIR={boost_dir} .. && make -j")
-os.system("mkdir -p pkgs/rayx-data/share/RAYX")
-os.system("cp -r rayx/Data pkgs/rayx-data/share/RAYX")
+os.system(f"mkdir -p pkgs/rayx-data/{data_path}")
+os.system("touch pkgs/rayx-data/__init__.py")
+os.system(f"cp -r rayx/Data pkgs/rayx-data/{data_path}")
 
 extensions = [
   Extension("rayx", 
@@ -37,7 +40,7 @@ setup(
   packages=find_namespace_packages(where="pkgs"),
   package_dir={"": "pkgs"},
   package_data={
-    "rayx-data.Data.nff": ["*.nff"],
-    "rayx-data.Data.PALIK": ["*.NKP"],
+    f"rayx-data.{data_path.replace('/', '.')}.Data.nff": ["*.nff"],
+    f"rayx-data.{data_path.replace('/', '.')}.Data.PALIK": ["*.NKP"],
   }
 )
